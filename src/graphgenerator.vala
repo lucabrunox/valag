@@ -42,9 +42,9 @@ public class Valag.GraphGenerator : CodeVisitor
 {
   private CodeContext context;
   private Graph graph; 
-  private Gvc.Node current_node;
-  private CodeNode current_codenode;
+  private void* parent_node = null;
   private bool accept_children = true;
+  private string? next_label = null;
   private Set<GraphEdge> edges = new HashSet<GraphEdge>((HashFunc)GraphEdge.hash, (EqualFunc)GraphEdge.equal);
 
   public GraphGenerator (string graph_name)
@@ -86,17 +86,16 @@ public class Valag.GraphGenerator : CodeVisitor
   {
     var node_name = @"node$((long)obj)";
     var node = graph.find_node (node_name);
-    if (node == null)
-      node = graph.create_node (node_name);
-    else if (node != null && name == null)
+    if (node != null)
       return node;
 
+    node = graph.create_node (node_name);
     node.safe_set ("shape", "record", "");
     var label = new StringBuilder();
     label.append (@"{ $(name)");
     foreach (weak RecordEntry entry in entries)
       {
-        if (entry.value != null)
+        if (entry.value != null && entry.value != "false")
           label.append (@" | { $(entry.name) | $(entry.value) }");
       }
     label.append_c ('}');
@@ -107,19 +106,18 @@ public class Valag.GraphGenerator : CodeVisitor
     return (owned)node;
   }
 
-  private Gvc.Node visit_graph_node (CodeNode codenode, string? name, RecordEntry[] entries, string? label = null)
+  private Gvc.Node visit_graph_node (CodeNode codenode, string? name, RecordEntry[] entries)
   {
-    var parent_node = current_node;
-    var node = current_node = create_node (codenode, name, entries);
+    var node = create_node (codenode, name, entries);
     if (parent_node != null)
       {
         var edge = new GraphEdge ();
-        edge.from = parent_node;
-        edge.to = current_node;
-        edge.label = label ?? get_label (codenode);
+        edge.from = find_node (parent_node);
+        edge.to = node;
+        edge.label = next_label ?? get_label (codenode);
         if (!(edge in edges))
           {
-            var gedge = graph.create_edge (parent_node, current_node);
+            var gedge = graph.create_edge (find_node (parent_node), node);
             if (edge.label != null)
               {
                 gedge.safe_set ("label", edge.label, "");
@@ -131,40 +129,50 @@ public class Valag.GraphGenerator : CodeVisitor
 
     if (accept_children)
       {
-        var old_codenode = current_codenode;
-        current_codenode = codenode;
+        var old_parent = parent_node;
+        parent_node = codenode;
         codenode.accept_children (this);
-        current_codenode = old_codenode;
+        parent_node = old_parent;
       }
 
-    current_node = parent_node;
     return node;
   }
 
-  private void visit_weak (CodeNode? codenode, Gvc.Node? parent_node, string? label = null)
+  private void visit_weak (CodeNode? codenode, CodeNode? parent_node, string? label = null)
   {
     if (codenode == null)
       return;
 
-    var old_node = current_node;
+    var old_parent = this.parent_node;
+    this.parent_node = parent_node;
     var old_accept = accept_children;
-    current_node = parent_node;
     accept_children = false;
-
+    var old_label = next_label;
+    next_label = label;
     codenode.accept (this);
-    var gedge = graph.find_edge (parent_node, get_node (codenode));
-    gedge.safe_set ("label", label, "");
-
+    next_label = old_label;
     accept_children = old_accept;
-    current_node = old_node;
+    this.parent_node = old_parent;
   }
 
   private string? get_label (CodeNode child)
   {
     string? label = null;
-    var parent = current_codenode;
-    if ((parent is Field || parent is LocalVariable) && child is Expression)
+    if (child is DataType)
+      {
+        if (parent_node is Field)
+          label = "field_type";
+        else if (parent_node is LocalVariable)
+          label = "variable_type";
+        else if (parent_node is Method)
+          label = "return_type";
+        else if (parent_node is ObjectCreationExpression)
+          label = "type_ref";
+      }
+    else if ((parent_node is Field || parent_node is LocalVariable) && child is Expression)
       label = "initializer";
+    else if (parent_node is SwitchStatement && child is Expression)
+      label = "expression";
 
     return label;
   }
@@ -198,14 +206,18 @@ public class Valag.GraphGenerator : CodeVisitor
   
   public override void visit_source_file (SourceFile source_file)
   {
-    current_node = create_node (source_file, "SourceFile",
-                                {RecordEntry() {name="filename", value=source_file.filename}});
+    create_node (source_file, "SourceFile",
+                 {RecordEntry() {name="filename", value=source_file.filename}});
+    var old_parent = parent_node;
+    parent_node = source_file;
     source_file.accept_children (this);
+    accept_children = false;
+    parent_node = old_parent;
   }
 
   public override void visit_namespace (Namespace ns)
   {
-    visit_graph_node (ns, "Namespace",
+    visit_graph_node (ns, "Namespace $(ns.to_qualified_string",
                       {RecordEntry() {name="name", value=ns.name}});
   }
 
@@ -320,21 +332,17 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_data_type (DataType type)
   {
-    string? label = null;
-    if (current_codenode is Method)
-      label = "return_type";
-    else if (current_codenode is Field)
-      label = "field_type";
-    var node = visit_graph_node (type, "DataType", {}, label);
-    visit_weak (type.data_type, node, "data_type");
+    visit_graph_node (type, "DataType",
+                      {RecordEntry(){name="value_owned", value=type.value_owned.to_string()},
+                       RecordEntry(){name="nullable", value=type.nullable.to_string()},
+                       RecordEntry(){name="is_dynamic", value=type.is_dynamic.to_string()},
+                       RecordEntry(){name="float_ref", value=type.floating_reference.to_string()}});
+    visit_weak (type.data_type, type, "data_type");
   }
   
   public override void visit_block (Block b)
   {
-    string? label = null;
-    if (current_codenode is Method)
-      label = "body";
-    visit_graph_node (b, "Block", {}, label);
+    visit_graph_node (b, "Block", {});
   }
 
   public override void visit_empty_statement (EmptyStatement stmt)
@@ -455,7 +463,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_expression (Expression expr)
   {
-    //expr.accept_children (this);
+    visit_weak (expr.value_type, expr, "value_type");
   }
 
   public override void visit_array_creation_expression (ArrayCreationExpression expr)
@@ -598,7 +606,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_assignment (Assignment a)
   {
-    current_node = visit_graph_node (a, "Assignment", {});
+    visit_graph_node (a, "Assignment", {});
   }
 
   public override void visit_end_full_expression (Expression expr)
