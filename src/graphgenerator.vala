@@ -43,13 +43,16 @@ public class Valag.GraphGenerator : CodeVisitor
   private CodeContext context;
   private Graph graph; 
   private void* parent_node = null;
-  private bool accept_children = true;
+  private bool is_weak = false;
   private string? next_label = null;
+  private int rank = 0;
+  private Vala.List<Vala.List<CodeNode>> ranking = new ArrayList<Vala.List<CodeNode>> ();
   private Set<GraphEdge> edges = new HashSet<GraphEdge>((HashFunc)GraphEdge.hash, (EqualFunc)GraphEdge.equal);
 
   public GraphGenerator (string graph_name)
     {
       graph = new Graph (graph_name, GraphKind.AGDIGRAPH);
+      graph.safe_set ("concentrate", "true", "");
     }
   
   private struct RecordEntry
@@ -72,6 +75,16 @@ public class Valag.GraphGenerator : CodeVisitor
       if (!file.external_package) {
         file.accept (this);
       }
+    }
+    assert (rank == 0);
+
+    /* use subgraphs to enforce rank */
+    foreach (var rankset in ranking)
+    {
+      unowned Graph sub = graph.create_subgraph (@"sub$((long)rankset)");
+      sub.safe_set ("rank", "same", "");
+      foreach (var codenode in rankset)
+        sub.create_node (@"node$((long)codenode)");
     }
 
     return (owned)graph;
@@ -127,12 +140,18 @@ public class Valag.GraphGenerator : CodeVisitor
           }
       }
 
-    if (accept_children)
+    if (!is_weak)
       {
+        // add to rank
+        if (rank >= ranking.size)
+          ranking.add (new ArrayList<CodeNode>());
+        ranking[rank].insert(0, codenode);
+        rank++;
         var old_parent = parent_node;
         parent_node = codenode;
         codenode.accept_children (this);
         parent_node = old_parent;
+        rank--;
       }
 
     return node;
@@ -145,13 +164,13 @@ public class Valag.GraphGenerator : CodeVisitor
 
     var old_parent = this.parent_node;
     this.parent_node = parent_node;
-    var old_accept = accept_children;
-    accept_children = false;
+    var old_weak = is_weak;
+    is_weak = true;
     var old_label = next_label;
     next_label = label;
     codenode.accept (this);
     next_label = old_label;
-    accept_children = old_accept;
+    is_weak = old_weak;
     this.parent_node = old_parent;
   }
 
@@ -211,7 +230,6 @@ public class Valag.GraphGenerator : CodeVisitor
     var old_parent = parent_node;
     parent_node = source_file;
     source_file.accept_children (this);
-    accept_children = false;
     parent_node = old_parent;
   }
 
@@ -337,7 +355,7 @@ public class Valag.GraphGenerator : CodeVisitor
                        RecordEntry(){name="nullable", value=type.nullable.to_string()},
                        RecordEntry(){name="is_dynamic", value=type.is_dynamic.to_string()},
                        RecordEntry(){name="float_ref", value=type.floating_reference.to_string()}});
-    visit_weak (type.data_type, type, "data_type");
+    visit_weak (type.data_type, type, "");
   }
   
   public override void visit_block (Block b)
@@ -464,6 +482,7 @@ public class Valag.GraphGenerator : CodeVisitor
   public override void visit_expression (Expression expr)
   {
     visit_weak (expr.value_type, expr, "value_type");
+    visit_weak (expr.target_type, expr, "target_type");
   }
 
   public override void visit_array_creation_expression (ArrayCreationExpression expr)
@@ -535,7 +554,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_postfix_expression (PostfixExpression expr)
   {
-    visit_graph_node (expr, "PostfixExpression", {});
+    visit_graph_node (expr, "PostfixExpression",
+                      {RecordEntry(){name="increment", value=expr.increment.to_string()}});
   }
 
   public override void visit_object_creation_expression (ObjectCreationExpression expr)

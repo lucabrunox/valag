@@ -158,12 +158,17 @@ namespace Gvc {
 		[CCode (cname = "agsafeset")]
 		public int safe_set ([CCode (type = "char*")] string attribute_name, [CCode (type = "char*")] string attribute_value, [CCode (type = "char*")] string? default_value);
 
+		[CCode (cname = "agsubg")]
+		public unowned Graph create_subgraph (owned string name);
+
+		[CCode (cname = "agfindsubg")]
+		public unowned Graph? find_subgraph (owned string name);
+
 		[CCode (cname = "AG_IS_DIRECTED")]
 		public bool is_directed ();
 
 		[CCode (cname = "AG_IS_STRICT")]
 		public bool is_strict ();
-
 	}
 
 	/**
