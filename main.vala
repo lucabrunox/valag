@@ -20,7 +20,7 @@
  *
  * Author:
  * 	Jürg Billeter <j@bitron.ch>
- *  Luca Bruno <lethalman88@gmail.com>
+ * 	Luca Bruno <lethalman88@gmail.com>
  */
 
 /*

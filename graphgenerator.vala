@@ -41,7 +41,7 @@ public class Valag.GraphEdge
 public class Valag.GraphGenerator : CodeVisitor
 {
   private GraphContext context;
-  private Graph graph; 
+  private Graph graph;
   private void* parent_node = null;
   private bool is_weak = false;
   private string? next_label = null;
@@ -211,6 +211,8 @@ public class Valag.GraphGenerator : CodeVisitor
     return label;
   }
 
+  // visitor
+
   public override void visit_source_file (SourceFile source_file)
   {
     create_node (source_file, "SourceFile",
@@ -228,7 +230,10 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_class (Class cl)
   {
-    visit_graph_node (cl, @"Class $(cl.get_full_name())", {});
+    visit_graph_node (cl, @"Class $(cl.get_full_name())",
+                      {RecordEntry(){name="is_abstract", value=cl.is_abstract.to_string()},
+                       RecordEntry(){name="is_compact", value=cl.is_compact.to_string()},
+                       RecordEntry(){name="is_immutable", value=cl.is_immutable.to_string()}});
   }
 
   public override void visit_struct (Struct st)
@@ -238,7 +243,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_enum (Vala.Enum en)
   {
-    visit_graph_node (en, @"Enum $(en.get_full_name())", {});
+    visit_graph_node (en, @"Enum $(en.get_full_name())",
+                      {RecordEntry(){name="is_flags", value=en.is_flags.to_string()}});
   }
 
   public override void visit_enum_value (Vala.EnumValue ev)
@@ -248,22 +254,23 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_error_domain (ErrorDomain edomain)
   {
-    visit_graph_node (edomain, "ErrorDomain", {});
+    visit_graph_node (edomain, @"ErrorDomain $(edomain.get_full_name())", {});
   }
 
   public override void visit_error_code (ErrorCode ecode)
   {
-    visit_graph_node (ecode, "ErrorCode", {});
+    visit_graph_node (ecode, @"ErrorCode $(ecode.name)", {});
   }
 
   public override void visit_delegate (Delegate d)
   {
-    visit_graph_node (d, "Delegate", {});
+    visit_graph_node (d, @"Delegate $(d.name)",
+                      {RecordEntry(){name="has_target", value=d.has_target.to_string()}});
   }
 
   public override void visit_member (Member m)
   {
-    visit_graph_node (m, @"Member $(m.name)", {});
+    m.accept_children (this);
   }
 
   public override void visit_constant (Constant c)
