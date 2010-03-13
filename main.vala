@@ -30,7 +30,21 @@
 using GLib;
 using Vala;
 
-class Valag.Application {
+class Valag.GraphContext : CodeContext
+{
+  public bool concentrate;
+}
+
+class Valag.Application
+{
+  static bool concentrate;
+
+  const OptionEntry[] graph_options = {
+    { "concentrate", 'c', 0, OptionArg.NONE, ref concentrate, "Concentrate edges", null },
+    { "", 0, 0, OptionArg.FILENAME_ARRAY, ref sources, null, "FILE..." },
+    { null }
+  };
+
   static string basedir;
   static string directory;
   static bool version;
@@ -63,9 +77,9 @@ class Valag.Application {
 
   static string entry_point;
 
-  private CodeContext context;
+  private GraphContext context;
 
-  const OptionEntry[] options = {
+  const OptionEntry[] vala_options = {
     { "girdir", 0, 0, OptionArg.FILENAME_ARRAY, ref gir_directories, "Look for .gir files in DIRECTORY", "DIRECTORY..." },
     { "vapidir", 0, 0, OptionArg.FILENAME_ARRAY, ref vapi_directories, "Look for package bindings in DIRECTORY", "DIRECTORY..." },
     { "pkg", 0, 0, OptionArg.STRING_ARRAY, ref packages, "Include binding for PACKAGE", "PACKAGE..." },
@@ -88,7 +102,6 @@ class Valag.Application {
     { "profile", 0, 0, OptionArg.STRING, ref profile, "Use the given profile instead of the default", "PROFILE" },
     { "quiet", 'q', 0, OptionArg.NONE, ref quiet_mode, "Do not print messages to the console", null },
     { "verbose", 'v', 0, OptionArg.NONE, ref verbose_mode, "Print additional messages to the console", null },
-    { "", 0, 0, OptionArg.FILENAME_ARRAY, ref sources, null, "FILE..." },
     { null }
   };
 	
@@ -160,9 +173,13 @@ class Valag.Application {
   }
 	
   private int run () {
-    context = new CodeContext ();
+    context = new GraphContext ();
     CodeContext.push (context);
 
+    // graph
+    context.concentrate = concentrate;
+
+    // vala
     context.assert = !disable_assert;
     context.checking = enable_checking;
     context.deprecated = deprecated;
@@ -300,7 +317,7 @@ class Valag.Application {
 
     var gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "png", "valainitial.png");
+    gvcontext.render_filename (graph, "dot", "valainitial.png");
 		
     var resolver = new SymbolResolver ();
     resolver.resolve (context);
@@ -428,7 +445,13 @@ class Valag.Application {
     try {
       var opt_context = new OptionContext ("- Valag Graph Generator");
       opt_context.set_help_enabled (true);
-      opt_context.add_main_entries (options, null);
+
+      opt_context.add_main_entries (graph_options, null);
+
+      var vala_group = new OptionGroup ("vala", "Vala compiler options", "Show vala options");
+      vala_group.add_entries (vala_options);
+      opt_context.add_group ((owned)vala_group);
+
       opt_context.parse (ref args);
     } catch (OptionError e) {
       stdout.printf ("%s\n", e.message);

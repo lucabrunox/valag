@@ -40,7 +40,7 @@ public class Valag.GraphEdge
 
 public class Valag.GraphGenerator : CodeVisitor
 {
-  private CodeContext context;
+  private GraphContext context;
   private Graph graph; 
   private void* parent_node = null;
   private bool is_weak = false;
@@ -52,7 +52,6 @@ public class Valag.GraphGenerator : CodeVisitor
   public GraphGenerator (string graph_name)
     {
       graph = new Graph (graph_name, GraphKind.AGDIGRAPH);
-      graph.safe_set ("concentrate", "true", "");
     }
   
   private struct RecordEntry
@@ -67,8 +66,10 @@ public class Valag.GraphGenerator : CodeVisitor
    * @param context a code context
    */
   public Graph generate (CodeContext context) {
-    this.context = context;
-    
+    this.context = (GraphContext)context;
+    if (this.context.concentrate)
+      graph.safe_set ("concentrate", "true", "");
+
     /* we're only interested in non-pkg source files */
     var source_files = context.get_source_files ();
     foreach (SourceFile file in source_files) {
@@ -84,7 +85,11 @@ public class Valag.GraphGenerator : CodeVisitor
       unowned Graph sub = graph.create_subgraph (@"sub$((long)rankset)");
       sub.safe_set ("rank", "same", "");
       foreach (var codenode in rankset)
+      {
+        if (codenode is Symbol)
+          stdout.printf("%d %s\n", ranking.index_of (rankset), (codenode as Symbol).name);
         sub.create_node (@"node$((long)codenode)");
+      }
     }
 
     return (owned)graph;
@@ -103,19 +108,21 @@ public class Valag.GraphGenerator : CodeVisitor
       return node;
 
     node = graph.create_node (node_name);
-    node.safe_set ("shape", "record", "");
+    if (obj is TypeSymbol)
+      node.safe_set ("shape", "Mrecord", "");
+    else
+      node.safe_set ("shape", "record", "");
+
     var label = new StringBuilder();
     label.append (@"{ $(name)");
     foreach (weak RecordEntry entry in entries)
-      {
-        if (entry.value != null && entry.value != "false")
-          label.append (@" | { $(entry.name) | $(entry.value) }");
-      }
-    label.append_c ('}');
+    {
+      if (entry.value != null && entry.value != "false")
+        label.append (@" | { $(entry.name) | $(entry.value) }");
+    }
+    label.append (" }");
     node.safe_set ("label", label.str, "");
 
-    if (obj is TypeSymbol)
-      node.set ("shape", "Mrecord");
     return (owned)node;
   }
 
@@ -142,10 +149,18 @@ public class Valag.GraphGenerator : CodeVisitor
 
     if (!is_weak)
       {
-        // add to rank
-        if (rank >= ranking.size)
-          ranking.add (new ArrayList<CodeNode>());
-        ranking[rank].insert(0, codenode);
+        // higher rank
+        var cur_rank = node["rank"];
+        if (cur_rank != null && rank > cur_rank.to_int())
+          ranking[cur_rank.to_int()].remove (codenode);
+        else
+          {
+            // add to rank
+            if (rank >= ranking.size)
+              ranking.add (new ArrayList<CodeNode>());
+            ranking[rank].add (codenode);
+            node.safe_set ("rank", rank.to_string(), "");
+          }
         rank++;
         var old_parent = parent_node;
         parent_node = codenode;
@@ -153,7 +168,7 @@ public class Valag.GraphGenerator : CodeVisitor
         parent_node = old_parent;
         rank--;
       }
-
+    
     return node;
   }
 
@@ -196,33 +211,6 @@ public class Valag.GraphGenerator : CodeVisitor
     return label;
   }
 
-  private string get_operator_string (BinaryOperator operator) {
-    switch (operator) {
-    case BinaryOperator.PLUS: return "+";
-    case BinaryOperator.MINUS: return "-";
-    case BinaryOperator.MUL: return "*";
-    case BinaryOperator.DIV: return "/";
-    case BinaryOperator.MOD: return "%";
-    case BinaryOperator.SHIFT_LEFT: return "<<";
-    case BinaryOperator.SHIFT_RIGHT: return ">>";
-    case BinaryOperator.LESS_THAN: return "<";
-    case BinaryOperator.GREATER_THAN: return ">";
-    case BinaryOperator.LESS_THAN_OR_EQUAL: return "<=";
-    case BinaryOperator.GREATER_THAN_OR_EQUAL: return ">=";
-    case BinaryOperator.EQUALITY: return "==";
-    case BinaryOperator.INEQUALITY: return "!+";
-    case BinaryOperator.BITWISE_AND: return "&";
-    case BinaryOperator.BITWISE_OR: return "|";
-    case BinaryOperator.BITWISE_XOR: return "^";
-    case BinaryOperator.AND: return "&&";
-    case BinaryOperator.OR: return "||";
-    case BinaryOperator.IN: return "in";
-    case BinaryOperator.COALESCE: return "??";
-    }
-    
-    assert_not_reached ();
-  }
-  
   public override void visit_source_file (SourceFile source_file)
   {
     create_node (source_file, "SourceFile",
@@ -235,31 +223,27 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_namespace (Namespace ns)
   {
-    visit_graph_node (ns, "Namespace $(ns.to_qualified_string",
-                      {RecordEntry() {name="name", value=ns.name}});
+    visit_graph_node (ns, @"Namespace $(ns.get_full_name())", {});
   }
 
   public override void visit_class (Class cl)
   {
-    visit_graph_node (cl, "Class",
-                      {RecordEntry() {name="name", value=cl.name}});
+    visit_graph_node (cl, @"Class $(cl.get_full_name())", {});
   }
 
   public override void visit_struct (Struct st)
   {
-    visit_graph_node (st, "Struct",
-                      {RecordEntry() {name="name", value=st.name}});
+    visit_graph_node (st, @"Struct $(st.get_full_name())", {});
   }
 
   public override void visit_enum (Vala.Enum en)
   {
-    visit_graph_node (en, "Enum",
-                      {RecordEntry() {name="name", value=en.name}});
+    visit_graph_node (en, @"Enum $(en.get_full_name())", {});
   }
 
   public override void visit_enum_value (Vala.EnumValue ev)
   {
-    visit_graph_node (ev, "EnumValue", {});
+    visit_graph_node (ev, @"EnumValue $(ev.name)", {});
   }
 
   public override void visit_error_domain (ErrorDomain edomain)
@@ -279,8 +263,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_member (Member m)
   {
-    visit_graph_node (m, "Member",
-                      {RecordEntry() {name="name", value=m.name}});
+    visit_graph_node (m, @"Member $(m.name)", {});
   }
 
   public override void visit_constant (Constant c)
@@ -606,7 +589,7 @@ public class Valag.GraphGenerator : CodeVisitor
   public override void visit_binary_expression (BinaryExpression expr)
   {
     visit_graph_node (expr, "BinaryExpression",
-                      {RecordEntry(){name="operator", value=get_operator_string(expr.operator)}});
+                      {RecordEntry(){name="operator", value=expr.get_operator_string()}});
   }
 
   public override void visit_type_check (TypeCheck expr)
