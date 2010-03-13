@@ -172,20 +172,20 @@ public class Valag.GraphGenerator : CodeVisitor
     return node;
   }
 
-  private void visit_weak (CodeNode? codenode, CodeNode? parent_node, string? label = null)
+  private void visit_child (CodeNode? codenode, CodeNode? parent_node, string? label = null, bool is_weak = true)
   {
     if (codenode == null)
       return;
 
     var old_parent = this.parent_node;
     this.parent_node = parent_node;
-    var old_weak = is_weak;
-    is_weak = true;
+    var old_weak = this.is_weak;
+    this.is_weak = is_weak;
     var old_label = next_label;
     next_label = label;
     codenode.accept (this);
     next_label = old_label;
-    is_weak = old_weak;
+    this.is_weak = old_weak;
     this.parent_node = old_parent;
   }
 
@@ -198,15 +198,49 @@ public class Valag.GraphGenerator : CodeVisitor
           label = "field_type";
         else if (parent_node is LocalVariable)
           label = "variable_type";
-        else if (parent_node is Method)
+        else if (parent_node is Method && ((Method)parent_node).return_type == child)
           label = "return_type";
         else if (parent_node is ObjectCreationExpression)
           label = "type_ref";
+        else if (parent_node is FormalParameter)
+          label = "param_type";
+        else if (parent_node is Property)
+          label = "prop_type";
+        else if (parent_node is ForeachStatement)
+          label = "type_ref";
+        else if (parent_node is ArrayCreationExpression)
+          label = "element_type";
       }
     else if ((parent_node is Field || parent_node is LocalVariable) && child is Expression)
       label = "initializer";
     else if (parent_node is SwitchStatement && child is Expression)
       label = "expression";
+    else if (parent_node is Property && child == ((Property)parent_node).get_accessor)
+      label = "get";
+    else if (parent_node is Property && child == ((Property)parent_node).set_accessor)
+      label = "set";
+    else if (parent_node is IfStatement && child == ((IfStatement)parent_node).true_statement)
+      label = "true";
+    else if (parent_node is IfStatement && child == ((IfStatement)parent_node).false_statement)
+      label = "false";
+    else if ((parent_node is WhileStatement || parent_node is DoStatement) && child is Expression || (parent_node is ForStatement && ((ForStatement)parent_node).condition == child))
+      label = "condition";
+    else if (parent_node is TryStatement && ((TryStatement)parent_node).finally_body == child)
+      label = "finally";
+    else if (parent_node is MethodCall && ((MethodCall)parent_node).call == child)
+      label = "call";
+    else if (parent_node is ElementAccess && ((ElementAccess)parent_node).container == child)
+      label = "container";
+    else if (parent_node is SliceExpression)
+      {
+        var slice = (SliceExpression)parent_node;
+        if (child == slice.container)
+          label = "container";
+        else if (child == slice.start)
+          label = "start";
+        else if (child == slice.stop)
+          label = "stop";
+      }
 
     return label;
   }
@@ -275,52 +309,68 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_constant (Constant c)
   {
-    visit_graph_node (c, "Constant",
-                      {RecordEntry() {name="name", value=c.name}});
+    visit_graph_node (c, @"Constant $(c.name)", {});
   }
 
   public override void visit_field (Field f)
   {
-    visit_graph_node (f, "Field",
-                      {RecordEntry() {name="name", value=f.name}});
+    visit_graph_node (f, @"Field $(f.name)", {});
   }
 
   public override void visit_method (Method m)
   {
-    visit_graph_node (m, "Method",
-                      {RecordEntry() {name="name", value=m.name}});
+    visit_graph_node (m, @"Method $(m.name)",
+                      {RecordEntry(){name="is_abstract", value=m.is_abstract.to_string()},
+                       RecordEntry(){name="is_virtual", value=m.is_virtual.to_string()},
+                       RecordEntry(){name="overrides", value=m.overrides.to_string()},
+                       RecordEntry(){name="closure", value=m.closure.to_string()},
+                       RecordEntry(){name="coroutine", value=m.coroutine.to_string()}});
   }
 
   public override void visit_creation_method (CreationMethod m)
   {
-    visit_graph_node (m, "CreationMethod",
-                      {RecordEntry(){name="name", value=m.name}});
+    visit_graph_node (m, @"CreationMethod $(m.name)",
+                      {RecordEntry(){name="chain_up", value=m.chain_up.to_string()}});
   }
 
   public override void visit_formal_parameter (FormalParameter p)
   {
-    visit_graph_node (p, "FormalParameter",
-                      {RecordEntry() {name="name", value=p.name}});
+    string? direction = null;
+    if (p.direction == ParameterDirection.OUT)
+      direction = "out";
+    else if (p.direction == ParameterDirection.REF)
+      direction = "ref";
+    visit_graph_node (p, @"FormalParameter $(p.name)",
+                      {RecordEntry() {name="ellipsis", value=p.ellipsis.to_string()},
+                       RecordEntry() {name="direction", value=direction}});
   }
 
   public override void visit_property (Property prop)
   {
-    visit_graph_node (prop, "Property", {});
+    visit_graph_node (prop, @"Property $(prop.name)",
+                      {RecordEntry(){name="notify", value=prop.notify.to_string()},
+                       RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
+                       RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
+                       RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
+    visit_child (prop.field, prop, "field", false);
   }
 
   public override void visit_property_accessor (PropertyAccessor acc)
   {
-    visit_graph_node (acc, "PropertyAccessor", {});
+    visit_graph_node (acc, @"PropertyAccessor $(acc.name)",
+                      {RecordEntry(){name="automatic_body", value=acc.automatic_body.to_string()}});
   }
 
   public override void visit_signal (Vala.Signal sig)
   {
-    visit_graph_node (sig, "Signal", {});
+    visit_graph_node (sig, @"Signal $(sig.name)",
+                      {RecordEntry(){name="has_emitter", value=sig.has_emitter.to_string()},
+                       RecordEntry(){name="is_virtual", value=sig.is_virtual.to_string()}});
   }
 
   public override void visit_constructor (Constructor c)
   {
-    visit_graph_node (c, "Constructor", {});
+    visit_graph_node (c, @"Constructor $(c.name)", {});
   }
 
   public override void visit_destructor (Destructor d)
@@ -330,12 +380,13 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_type_parameter (TypeParameter p)
   {
-    visit_graph_node (p, "TypeParameter", {});
+    visit_graph_node (p, @"TypeParameter $(p.name)", {});
   }
 
   public override void visit_using_directive (UsingDirective ns)
   {
     visit_graph_node (ns, "UsingDirective", {});
+    visit_child (ns.namespace_symbol, ns, "", false);
   }
 
   public override void visit_data_type (DataType type)
@@ -345,12 +396,13 @@ public class Valag.GraphGenerator : CodeVisitor
                        RecordEntry(){name="nullable", value=type.nullable.to_string()},
                        RecordEntry(){name="is_dynamic", value=type.is_dynamic.to_string()},
                        RecordEntry(){name="float_ref", value=type.floating_reference.to_string()}});
-    visit_weak (type.data_type, type, "");
+    visit_child (type.data_type, type, "");
   }
   
   public override void visit_block (Block b)
   {
-    visit_graph_node (b, "Block", {});
+    visit_graph_node (b, "Block",
+                      {RecordEntry(){name="captured", value=b.captured.to_string()}});
   }
 
   public override void visit_empty_statement (EmptyStatement stmt)
@@ -365,8 +417,10 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_local_variable (LocalVariable local)
   {
-    visit_graph_node (local, "LocalVariable",
-                      {RecordEntry(){name="name", value=local.name}});
+    visit_graph_node (local, @"LocalVariable $(local.name)",
+                      {RecordEntry(){name="is_result", value=local.is_result.to_string()},
+                       RecordEntry(){name="floating", value=local.floating.to_string()},
+                       RecordEntry(){name="captured", value=local.captured.to_string()}});
   }
 
   public override void visit_initializer_list (InitializerList list)
@@ -421,7 +475,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_foreach_statement (ForeachStatement stmt)
   {
-    visit_graph_node (stmt, "ForeachStatement", {});
+    visit_graph_node (stmt, "ForeachStatement",
+                      {RecordEntry(){name="variable_name", value=stmt.variable_name}});
   }
 
   public override void visit_break_statement (BreakStatement stmt)
@@ -456,7 +511,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_catch_clause (CatchClause clause)
   {
-    visit_graph_node (clause, "CatchClause", {});
+    visit_graph_node (clause, "CatchClause",
+                      {RecordEntry(){name="variable_name", value=clause.variable_name}});
   }
 
   public override void visit_lock_statement (LockStatement stmt)
@@ -471,23 +527,26 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_expression (Expression expr)
   {
-    visit_weak (expr.value_type, expr, "value_type");
-    visit_weak (expr.target_type, expr, "target_type");
+    visit_child (expr.value_type, expr, "value_type");
+    visit_child (expr.target_type, expr, "target_type");
   }
 
   public override void visit_array_creation_expression (ArrayCreationExpression expr)
   {
-    visit_graph_node (expr, "ArrayCreationExpression", {});
+    visit_graph_node (expr, "ArrayCreationExpression",
+                      {RecordEntry(){name="rank", value=expr.rank.to_string()}});
   }
 
   public override void visit_boolean_literal (BooleanLiteral lit)
   {
-    visit_graph_node (lit, "BooleanLiteral", {});
+    visit_graph_node (lit, "BooleanLiteral",
+                      {RecordEntry(){name="value", value=lit.value.to_string()}});
   }
 
   public override void visit_character_literal (CharacterLiteral lit)
   {
-    visit_graph_node (lit, "CharacterLiteral", {});
+    visit_graph_node (lit, "CharacterLiteral",
+                      {RecordEntry(){name="value", value=lit.value}});
   }
 
   public override void visit_integer_literal (IntegerLiteral lit)
@@ -498,12 +557,14 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_real_literal (RealLiteral lit)
   {
-    visit_graph_node (lit, "RealLiteral", {});
+    visit_graph_node (lit, "RealLiteral",
+                      {RecordEntry(){name="value", value=lit.value}});
   }
 
   public override void visit_string_literal (StringLiteral lit)
   {
-    visit_graph_node (lit, "StringLiteral", {});
+    visit_graph_node (lit, "StringLiteral",
+                      {RecordEntry(){name="value", value=lit.value}});
   }
 
   public override void visit_template (Template tmpl)
@@ -518,13 +579,14 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_member_access (MemberAccess expr)
   {
-    visit_graph_node (expr, "MemberAccess",
-                      {RecordEntry(){name="name", value=expr.member_name}});
+    visit_graph_node (expr, @"MemberAccess $(expr.member_name)", {});
   }
 
   public override void visit_method_call (MethodCall expr)
   {
-    visit_graph_node (expr, "MethodCall", {});
+    visit_graph_node (expr, "MethodCall",
+                      {RecordEntry(){name="is_yield", value=expr.is_yield_expression.to_string()},
+                       RecordEntry(){name="is_assert", value=expr.is_assert.to_string()}});
   }
 
   public override void visit_element_access (ElementAccess expr)
@@ -621,6 +683,6 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_end_full_expression (Expression expr)
   {
-    visit_graph_node (expr, "EndFullExpression", {});
+    expr.accept (this);
   }
 }
