@@ -317,7 +317,7 @@ class Valag.Application
 
     var gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "dot", "valainitial.png");
+    gvcontext.render_filename (graph, "png", "valainitial.png");
 		
     var resolver = new SymbolResolver ();
     resolver.resolve (context);
