@@ -716,7 +716,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_named_argument (NamedArgument expr)
   {
-    visit_graph_node (expr, "NamedArgument", {});
+    visit_graph_node (expr, "NamedArgument",
+                      {RecordEntry(){name="name", value=expr.name}});
   }
 
   public override void visit_pointer_indirection (PointerIndirection expr)
