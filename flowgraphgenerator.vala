@@ -61,6 +61,12 @@ public class Valag.FlowGraphGenerator : CodeVisitor
     return (owned)graph;
   }
 
+  private string escape_gvlabel (string label)
+  {
+    // TODO: improve this
+    return label.replace("\\", "\\\\").replace("<", "\\<").replace(">", "\\>");
+  }
+
   private Gvc.Node create_node (void* obj, string? name, RecordEntry[] entries)
   {
     var node_name = @"node$((long)obj)";
@@ -87,7 +93,7 @@ public class Valag.FlowGraphGenerator : CodeVisitor
     foreach (weak RecordEntry entry in entries)
     {
       if (entry.value != null && entry.value != "false")
-        label.append (@" | { $(entry.name) | $(entry.value) }");
+        label.append (@" | { $(escape_gvlabel(entry.name)) | $(escape_gvlabel(entry.value)) }");
     }
     label.append (" }");
     node.safe_set ("label", label.str, "");
@@ -262,7 +268,7 @@ public class Valag.FlowGraphGenerator : CodeVisitor
 
   public override void visit_property_accessor (PropertyAccessor acc)
   {
-    visit_graph_node (acc, @"PropertyAccessor $(acc.name)",
+    visit_graph_node (acc, @"PropertyAccessor",
                       {RecordEntry(){name="automatic_body", value=acc.automatic_body.to_string()}});
   }
 

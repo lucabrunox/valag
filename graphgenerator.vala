@@ -96,6 +96,12 @@ public class Valag.GraphGenerator : CodeVisitor
     return graph.find_node (@"node$((long)obj)");
   }
 
+  private string escape_gvlabel (string label)
+  {
+    // TODO: improve this
+    return label.replace("\\", "\\\\").replace("<", "\\<").replace(">", "\\>");
+  }
+
   private Gvc.Node create_node (void* obj, string? name, RecordEntry[] entries)
   {
     var node_name = @"node$((long)obj)";
@@ -114,7 +120,7 @@ public class Valag.GraphGenerator : CodeVisitor
     foreach (weak RecordEntry entry in entries)
     {
       if (entry.value != null && entry.value != "false")
-        label.append (@" | { $(entry.name) | $(entry.value) }");
+        label.append (@" | { $(escape_gvlabel(entry.name)) | $(escape_gvlabel(entry.value)) }");
     }
     label.append (" }");
     node.safe_set ("label", label.str, "");
@@ -139,6 +145,8 @@ public class Valag.GraphGenerator : CodeVisitor
                 gedge.safe_set ("label", edge.label, "");
                 gedge.safe_set ("fontsize", "8", "");
               }
+            if (is_weak)
+              gedge.safe_set ("style", "dashed", "");
             edges.add (edge);
           }
       }
@@ -351,12 +359,12 @@ public class Valag.GraphGenerator : CodeVisitor
                        RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
                        RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
                        RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
-    visit_child (prop.field, prop, "field", false);
+    visit_child (prop.field, prop, "field");
   }
 
   public override void visit_property_accessor (PropertyAccessor acc)
   {
-    visit_graph_node (acc, @"PropertyAccessor $(acc.name)",
+    visit_graph_node (acc, "PropertyAccessor",
                       {RecordEntry(){name="automatic_body", value=acc.automatic_body.to_string()}});
   }
 
