@@ -1,0 +1,20 @@
+Valag is a graphviz graph generator for Vala source files.
+Homepage: http://gitorious.org/lethal-works/valag
+
+Requirements: libgraphviz-dev and latest tip of Vala git repository.
+
+USAGE
+
+Command line syntax of valag is similar to valac.
+Generated files are valainitial.png, valaresolved.png, valaanalyzer.png and
+valaflow.png. 
+- valainitial is codenode graph right after the parsing process.
+- valaresolved is generated after the symbol resolver.
+- valaanalyzer after the semantic analyzer.
+- valaflow puts emphasis on control flow basic blocks.
+
+INSTALL
+
+To install valag under /usr/local/bin type `make install'. If you want to
+change the installation directory (e.g. under /usr/bin)
+type `make install DESTDIR=/usr'
