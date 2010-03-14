@@ -1,5 +1,5 @@
 Valag is a graphviz graph generator for Vala source files.
-Homepage: http://gitorious.org/lethal-works/valag
+Homepage: http://lethalman.hostei.com/valag.html.
 
 Requirements: libgraphviz-dev and latest tip of Vala git repository.
 
