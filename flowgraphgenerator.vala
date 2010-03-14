@@ -206,7 +206,7 @@ public class Valag.FlowGraphGenerator : CodeVisitor
 
   public override void visit_member (Member m)
   {
-    m.accept_children (this);
+    // delegate to subclasses
   }
 
   public override void visit_constant (Constant c)

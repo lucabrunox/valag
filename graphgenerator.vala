@@ -308,7 +308,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_member (Member m)
   {
-    m.accept_children (this);
+    // delegate to subclasses
   }
 
   public override void visit_constant (Constant c)
