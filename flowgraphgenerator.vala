@@ -20,36 +20,16 @@
 using Vala;
 using Gvc;
 
-public class Valag.GraphEdge
-{
-  public Gvc.Node from;
-  public Gvc.Node to;
-  public string? label = null;
-
-  public uint hash ()
-  {
-    return (uint)(long)from + (uint)(long)to + (label == null ? 0 : label.hash());
-  }
-
-  public bool equal (void* obj)
-  {
-    var edge = (Valag.GraphEdge)obj;
-    return edge.from == from && edge.to == to && edge.label == label;
-  }
-}
-
-public class Valag.GraphGenerator : CodeVisitor
+public class Valag.FlowGraphGenerator : CodeVisitor
 {
   private GraphContext context;
   private Graph graph;
-  private void* parent_node = null;
-  private bool is_weak = false;
-  private string? next_label = null;
-  private int rank = 0;
-  private Vala.List<Vala.List<CodeNode>> ranking = new ArrayList<Vala.List<CodeNode>> ();
-  private Set<GraphEdge> edges = new HashSet<GraphEdge>((HashFunc)GraphEdge.hash, (EqualFunc)GraphEdge.equal);
+  private unowned Graph current_cluster;
+  private Gvc.Node parent_node;
+  private Set<BasicBlock> visited = new HashSet<BasicBlock>();
+  private int next_cluster;
 
-  public GraphGenerator (string graph_name)
+  public FlowGraphGenerator (string graph_name)
     {
       graph = new Graph (graph_name, GraphKind.AGDIGRAPH);
     }
@@ -61,7 +41,7 @@ public class Valag.GraphGenerator : CodeVisitor
   }
 
   /**
-   * Generate a graphviz dot file in the specified context.
+   * Generate a graphviz dot file of the control flows in the specified context.
    *
    * @param context a code context
    */
@@ -77,23 +57,8 @@ public class Valag.GraphGenerator : CodeVisitor
         file.accept (this);
       }
     }
-    assert (rank == 0);
-
-    /* use subgraphs to enforce rank */
-    foreach (var rankset in ranking)
-    {
-      unowned Graph sub = graph.create_subgraph (@"sub$((long)rankset)");
-      sub.safe_set ("rank", "same", "");
-      foreach (var codenode in rankset)
-        sub.create_node (@"node$((long)codenode)");
-    }
 
     return (owned)graph;
-  }
-
-  private Gvc.Node find_node (void* obj)
-  {
-    return graph.find_node (@"node$((long)obj)");
   }
 
   private Gvc.Node create_node (void* obj, string? name, RecordEntry[] entries)
@@ -103,11 +68,19 @@ public class Valag.GraphGenerator : CodeVisitor
     if (node != null)
       return node;
 
-    node = graph.create_node (node_name);
-    if (obj is TypeSymbol)
-      node.safe_set ("shape", "Mrecord", "");
+    if (obj is BasicBlock)
+      node = current_cluster.create_node (node_name);
     else
-      node.safe_set ("shape", "record", "");
+      node = graph.create_node (node_name);
+
+    node.safe_set ("shape", "record", "");
+    if (obj is BasicBlock && name != "BasicBlock")
+      node.safe_set ("shape", "Mrecord", "");
+
+    if (obj is CodeNode || obj is SourceFile)
+      node.safe_set ("color", "gray", "");
+    else
+      node.safe_set ("color", "black", "");
 
     var label = new StringBuilder();
     label.append (@"{ $(name)");
@@ -122,133 +95,65 @@ public class Valag.GraphGenerator : CodeVisitor
     return (owned)node;
   }
 
+  private unowned Gvc.Graph create_cluster ()
+  {
+    return graph.create_subgraph (@"cluster_$(next_cluster++)");
+  }
+
   private Gvc.Node visit_graph_node (CodeNode codenode, string? name, RecordEntry[] entries)
   {
     var node = create_node (codenode, name, entries);
     if (parent_node != null)
       {
-        var edge = new GraphEdge ();
-        edge.from = find_node (parent_node);
-        edge.to = node;
-        edge.label = next_label ?? get_label (codenode);
-        if (!(edge in edges))
-          {
-            var gedge = graph.create_edge (find_node (parent_node), node);
-            if (edge.label != null)
-              {
-                gedge.safe_set ("label", edge.label, "");
-                gedge.safe_set ("fontsize", "8", "");
-              }
-            edges.add (edge);
-          }
+        var edge = graph.find_edge (parent_node, node);
+        if (edge == null)
+          graph.create_edge (parent_node, node);
       }
 
-    if (!is_weak)
-      {
-        // higher rank
-        var cur_rank = node["rank"];
-        if (cur_rank != null && rank > cur_rank.to_int())
-          ranking[cur_rank.to_int()].remove (codenode);
-        else
-          {
-            // add to rank
-            if (rank >= ranking.size)
-              ranking.add (new ArrayList<CodeNode>());
-            ranking[rank].add (codenode);
-            node.safe_set ("rank", rank.to_string(), "");
-          }
-        rank++;
-        var old_parent = parent_node;
-        parent_node = codenode;
-        codenode.accept_children (this);
-        parent_node = old_parent;
-        rank--;
-      }
-    
+    var old_parent = parent_node;
+    parent_node = node;
+    codenode.accept_children (this);
+    parent_node = old_parent;
+
     return node;
   }
 
-  private void visit_child (CodeNode? codenode, CodeNode? parent_node, string? label = null, bool is_weak = true)
+  private Gvc.Node visit_basic_block (BasicBlock block, bool is_entry = false)
   {
-    if (codenode == null)
-      return;
+    string label = "BasicBlock";
+    if (is_entry)
+      label = "EntryBlock";
+    else if (block.get_successors().size == 0)
+      label = "ExitBlock";
 
-    var old_parent = this.parent_node;
-    this.parent_node = parent_node;
-    var old_weak = this.is_weak;
-    this.is_weak = is_weak;
-    var old_label = next_label;
-    next_label = label;
-    codenode.accept (this);
-    next_label = old_label;
-    this.is_weak = old_weak;
-    this.parent_node = old_parent;
-  }
+    var node = create_node (block, label, {});
+    var edge = graph.find_edge (parent_node, node);
+    if (edge == null)
+      graph.create_edge (parent_node, node);
 
-  private string? get_label (CodeNode child)
-  {
-    string? label = null;
-    if (child is DataType)
+    if (!(block in visited))
       {
-        if (parent_node is Field)
-          label = "field_type";
-        else if (parent_node is LocalVariable)
-          label = "variable_type";
-        else if (parent_node is Method && ((Method)parent_node).return_type == child)
-          label = "return_type";
-        else if (parent_node is ObjectCreationExpression)
-          label = "type_ref";
-        else if (parent_node is FormalParameter)
-          label = "param_type";
-        else if (parent_node is Property)
-          label = "prop_type";
-        else if (parent_node is ForeachStatement)
-          label = "type_ref";
-        else if (parent_node is ArrayCreationExpression)
-          label = "element_type";
+        visited.add (block);
+        var old_parent = parent_node;
+        parent_node = node;
+        foreach (var succ in block.get_successors ())
+          visit_basic_block (succ);
+        foreach (var codenode in block.get_nodes ())
+          codenode.accept (this);
+        parent_node = old_parent;
       }
-    else if ((parent_node is Field || parent_node is LocalVariable) && child is Expression)
-      label = "initializer";
-    else if (parent_node is SwitchStatement && child is Expression)
-      label = "expression";
-    else if (parent_node is Property && child == ((Property)parent_node).get_accessor)
-      label = "get";
-    else if (parent_node is Property && child == ((Property)parent_node).set_accessor)
-      label = "set";
-    else if (parent_node is IfStatement && child == ((IfStatement)parent_node).true_statement)
-      label = "true";
-    else if (parent_node is IfStatement && child == ((IfStatement)parent_node).false_statement)
-      label = "false";
-    else if ((parent_node is WhileStatement || parent_node is DoStatement) && child is Expression || (parent_node is ForStatement && ((ForStatement)parent_node).condition == child))
-      label = "condition";
-    else if (parent_node is TryStatement && ((TryStatement)parent_node).finally_body == child)
-      label = "finally";
-    else if (parent_node is MethodCall && ((MethodCall)parent_node).call == child)
-      label = "call";
-    else if (parent_node is ElementAccess && ((ElementAccess)parent_node).container == child)
-      label = "container";
-    else if (parent_node is SliceExpression)
-      {
-        var slice = (SliceExpression)parent_node;
-        if (child == slice.container)
-          label = "container";
-        else if (child == slice.start)
-          label = "start";
-        else if (child == slice.stop)
-          label = "stop";
-      }
-
-    return label;
+    
+    return node;
   }
 
   // visitor
 
   public override void visit_source_file (SourceFile source_file)
   {
-    create_node (source_file, "SourceFile",
-                 {RecordEntry() {name="filename", value=source_file.filename}});
+    var node = create_node (source_file, "SourceFile",
+                            {RecordEntry() {name="filename", value=source_file.filename}});
     var old_parent = parent_node;
-    parent_node = source_file;
+    parent_node = node;
     source_file.accept_children (this);
     parent_node = old_parent;
   }
@@ -260,10 +165,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_class (Class cl)
   {
-    visit_graph_node (cl, @"Class $(cl.get_full_name())",
-                      {RecordEntry(){name="is_abstract", value=cl.is_abstract.to_string()},
-                       RecordEntry(){name="is_compact", value=cl.is_compact.to_string()},
-                       RecordEntry(){name="is_immutable", value=cl.is_immutable.to_string()}});
+    visit_graph_node (cl, @"Class $(cl.get_full_name())", {});
   }
 
   public override void visit_struct (Struct st)
@@ -273,8 +175,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_enum (Vala.Enum en)
   {
-    visit_graph_node (en, @"Enum $(en.get_full_name())",
-                      {RecordEntry(){name="is_flags", value=en.is_flags.to_string()}});
+    visit_graph_node (en, @"Enum $(en.get_full_name())", {});
   }
 
   public override void visit_enum_value (Vala.EnumValue ev)
@@ -294,8 +195,7 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_delegate (Delegate d)
   {
-    visit_graph_node (d, @"Delegate $(d.name)",
-                      {RecordEntry(){name="has_target", value=d.has_target.to_string()}});
+    visit_graph_node (d, @"Delegate $(d.name)", {});
   }
 
   public override void visit_member (Member m)
@@ -318,12 +218,19 @@ public class Valag.GraphGenerator : CodeVisitor
     var label = "Method";
     if (m is DynamicMethod)
       label = "DynamicMethod";
-    visit_graph_node (m, @"$(label) $(m.name)",
-                      {RecordEntry(){name="is_abstract", value=m.is_abstract.to_string()},
-                       RecordEntry(){name="is_virtual", value=m.is_virtual.to_string()},
-                       RecordEntry(){name="overrides", value=m.overrides.to_string()},
-                       RecordEntry(){name="closure", value=m.closure.to_string()},
-                       RecordEntry(){name="coroutine", value=m.coroutine.to_string()}});
+    var node = visit_graph_node (m, @"$(label) $(m.name)",
+                                 {RecordEntry(){name="is_abstract", value=m.is_abstract.to_string()},
+                                  RecordEntry(){name="is_virtual", value=m.is_virtual.to_string()},
+                                  RecordEntry(){name="overrides", value=m.overrides.to_string()},
+                                  RecordEntry(){name="closure", value=m.closure.to_string()},
+                                  RecordEntry(){name="coroutine", value=m.coroutine.to_string()}});
+    var old_parent = parent_node;
+    unowned Gvc.Graph old_cluster = current_cluster;
+    parent_node = node;
+    current_cluster = create_cluster ();
+    visit_basic_block (m.entry_block, true);
+    parent_node = old_parent;
+    current_cluster = old_cluster;
   }
 
   public override void visit_creation_method (CreationMethod m)
@@ -351,7 +258,6 @@ public class Valag.GraphGenerator : CodeVisitor
                        RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
                        RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
                        RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
-    visit_child (prop.field, prop, "field", false);
   }
 
   public override void visit_property_accessor (PropertyAccessor acc)
@@ -365,9 +271,7 @@ public class Valag.GraphGenerator : CodeVisitor
     var label = "Signal";
     if (sig is DynamicSignal)
       label = "DynamicSignal";
-    visit_graph_node (sig, @"$(label) $(sig.name)",
-                      {RecordEntry(){name="has_emitter", value=sig.has_emitter.to_string()},
-                       RecordEntry(){name="is_virtual", value=sig.is_virtual.to_string()}});
+    visit_graph_node (sig, @"$(label) $(sig.name)", {});
   }
 
   public override void visit_constructor (Constructor c)
@@ -388,94 +292,15 @@ public class Valag.GraphGenerator : CodeVisitor
   public override void visit_using_directive (UsingDirective ns)
   {
     visit_graph_node (ns, "UsingDirective", {});
-    visit_child (ns.namespace_symbol, ns, "", false);
   }
 
   public override void visit_data_type (DataType type)
   {
-    var label = "DataType";
-    CodeNode? child = null;
-    string? length = null;
-    string? rank = null;
-
-    if (type is DelegateType)
-      {
-        label = "DelegateType";
-        child = ((DelegateType)type).delegate_symbol;
-      }
-    else if (type is FieldPrototype)
-      {
-        label = "FieldPrototype";
-        child = ((FieldPrototype)type).field_symbol;
-      }
-    else if (type is GenericType)
-      label = "GenericType";
-    else if (type is InvalidType)
-      label = "InvalidType";
-    else if (type is MethodType)
-      {
-        label = "MethodType";
-        child = ((MethodType)type).method_symbol;
-      }
-    else if (type is PointerType)
-      label = "PointerType";
-    else if (type is ArrayType)
-      {
-        label = "ArrayType";
-        length = ((ArrayType)type).length.to_string ();
-        rank = ((ArrayType)type).rank.to_string ();
-      }
-    else if (type is ClassType)
-      {
-        label = "ClassType";
-        child = ((ClassType)type).class_symbol;
-      }
-    else if (type is SignalType)
-      {
-        label = "SignalType";
-        child = ((SignalType)type).signal_symbol;
-      }
-    else if (type is Vala.ErrorType)
-      label = "ErrorType";
-    else if (type is InterfaceType)
-      {
-        label = "InterfaceType";
-        child = ((InterfaceType)type).interface_symbol;
-      }
-    else if (type is NullType)
-      label = "NullType";
-    else if (type is ObjectType)
-      {
-        label = "ObjectType";
-        child = ((ObjectType)type).type_symbol;
-      }
-    else if (type is UnresolvedType)
-      label = "UnresolvedType";
-    else if (type is VoidType)
-      label = "VoidType";
-    else if (type is ValueType)
-      {
-        child = ((ValueType)type).type_symbol;
-        if (type is BooleanType)
-          label = "BooleanType";
-        else if (type is EnumValueType)
-          label = "EnumValueType";
-        else if (type is FloatingType)
-          label = "FloatingType";
-        else if (type is IntegerType)
-          label = "IntegerType";
-        else if (type is StructValueType)
-          label = "StructValueType";
-      }
-
-    visit_graph_node (type, label,
+    visit_graph_node (type, "DataType",
                       {RecordEntry(){name="value_owned", value=type.value_owned.to_string()},
                        RecordEntry(){name="nullable", value=type.nullable.to_string()},
                        RecordEntry(){name="is_dynamic", value=type.is_dynamic.to_string()},
-                       RecordEntry(){name="float_ref", value=type.floating_reference.to_string()},
-                       RecordEntry(){name="length", value=length},
-                       RecordEntry(){name="rank", value=rank}});
-    visit_child (child, type, "");
+                       RecordEntry(){name="float_ref", value=type.floating_reference.to_string()}});
   }
   
   public override void visit_block (Block b)
@@ -606,8 +431,6 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_expression (Expression expr)
   {
-    visit_child (expr.value_type, expr, "value_type");
-    visit_child (expr.target_type, expr, "target_type");
   }
 
   public override void visit_array_creation_expression (ArrayCreationExpression expr)

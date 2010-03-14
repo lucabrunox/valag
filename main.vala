@@ -364,6 +364,18 @@ class Valag.Application
       return quit ();
     }
 
+    // after flow analyzer graph
+    var flow_graph_generator = new FlowGraphGenerator ("valaflow");
+    graph = flow_graph_generator.generate (context);
+
+    if (context.report.get_errors () > 0) {
+      return quit ();
+    }
+
+    gvcontext = new Gvc.Context ();
+    gvcontext.layout (graph, "dot");
+    gvcontext.render_filename (graph, "png", "valaflow.png");
+
     return quit ();
   }
 

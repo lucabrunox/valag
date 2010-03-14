@@ -1,5 +1,5 @@
 VALAC = valac
-SRCS = main.vala graphgenerator.vala
+SRCS = main.vala graphgenerator.vala flowgraphgenerator.vala
 PREFIX = /usr/local
 DESTDIR = $(PREFIX)
 
