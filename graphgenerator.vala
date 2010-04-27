@@ -532,7 +532,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_switch_section (SwitchSection section)
   {
-    visit_graph_node (section, "SwitchSection", {});
+    visit_graph_node (section, "SwitchSection",
+                      {RecordEntry(){name="captured", value=section.captured.to_string()}});
   }
 
   public override void visit_switch_label (SwitchLabel label)
