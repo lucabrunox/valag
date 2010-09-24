@@ -204,11 +204,6 @@ public class Valag.FlowGraphGenerator : CodeVisitor
     visit_graph_node (d, @"Delegate $(d.name)", {});
   }
 
-  public override void visit_member (Member m)
-  {
-    // delegate to subclasses
-  }
-
   public override void visit_constant (Constant c)
   {
     visit_graph_node (c, @"Constant $(c.name)", {});

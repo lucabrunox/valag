@@ -198,7 +198,9 @@ public class Valag.GraphGenerator : CodeVisitor
     string? label = null;
     if (child is DataType)
       {
-        if (parent_node is Field)
+        if (parent_node is Class)
+          label = "base_class";
+        else if (parent_node is Field)
           label = "field_type";
         else if (parent_node is LocalVariable)
           label = "variable_type";
@@ -214,6 +216,8 @@ public class Valag.GraphGenerator : CodeVisitor
           label = "type_ref";
         else if (parent_node is ArrayCreationExpression)
           label = "element_type";
+        else if (parent_node is DataType)
+          label = "type_arg";
       }
     else if ((parent_node is Field || parent_node is LocalVariable) && child is Expression)
       label = "initializer";
@@ -304,11 +308,6 @@ public class Valag.GraphGenerator : CodeVisitor
   {
     visit_graph_node (d, @"Delegate $(d.name)",
                       {RecordEntry(){name="has_target", value=d.has_target.to_string()}});
-  }
-
-  public override void visit_member (Member m)
-  {
-    // delegate to subclasses
   }
 
   public override void visit_constant (Constant c)
