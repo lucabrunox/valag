@@ -38,9 +38,13 @@ class Valag.GraphContext : CodeContext
 class Valag.Application
 {
   static bool concentrate;
+  static string format;
+  static string prefix;
 
   const OptionEntry[] graph_options = {
     { "concentrate", 'c', 0, OptionArg.NONE, ref concentrate, "Concentrate edges", null },
+    { "format", 'f', 0, OptionArg.STRING, ref format, "Graphviz output format (default: 'xdot')", "FORMAT" },
+    { "prefix", 'p', 0, OptionArg.STRING, ref prefix, "Output filenames prefix (default: '')", "PREFIX" },
     { "", 0, 0, OptionArg.FILENAME_ARRAY, ref sources, null, "FILE..." },
     { null }
   };
@@ -253,14 +257,15 @@ class Valag.Application
       return quit ();
     }
 
+    var gvformat = format ?? "xdot";
+    var fileprefix = prefix ?? "";
+
     var gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "png", "valainitial.png");
-		
-    var resolver = new SymbolResolver ();
-    resolver.resolve (context);
+    gvcontext.render_filename (graph, gvformat, fileprefix+"valainitial."+gvformat);
+    context.resolver.resolve (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
@@ -274,12 +279,11 @@ class Valag.Application
 
     gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "png", "valaresolved.png");
+    gvcontext.render_filename (graph, gvformat, fileprefix+"valaresolved."+gvformat);
 
-    var analyzer = new SemanticAnalyzer ();
-    analyzer.analyze (context);
+    context.analyzer.analyze (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
@@ -287,18 +291,17 @@ class Valag.Application
     graph_generator = new GraphGenerator ("valaanalyzed");
     graph = graph_generator.generate (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
     gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "png", "valaanalyzed.png");
+    gvcontext.render_filename (graph, gvformat, fileprefix+"valaanalyzed."+gvformat);
 
-    var flow_analyzer = new FlowAnalyzer ();
-    flow_analyzer.analyze (context);
+    context.flow_analyzer.analyze (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
@@ -306,13 +309,13 @@ class Valag.Application
     var flow_graph_generator = new FlowGraphGenerator ("valaflow");
     graph = flow_graph_generator.generate (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
     gvcontext = new Gvc.Context ();
     gvcontext.layout (graph, "dot");
-    gvcontext.render_filename (graph, "png", "valaflow.png");
+    gvcontext.render_filename (graph, gvformat, fileprefix+"valaflow."+gvformat);
 
     return quit ();
   }
