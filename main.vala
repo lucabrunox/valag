@@ -74,6 +74,8 @@ class Valag.Application
   static bool quiet_mode;
   static bool verbose_mode;
   static string profile;
+  static bool nostdpkg;
+  static bool fatal_warnings;
 
   static string entry_point;
 
@@ -92,11 +94,13 @@ class Valag.Application
     { "debug", 'g', 0, OptionArg.NONE, ref debug, "Produce debug information", null },
     { "define", 'D', 0, OptionArg.STRING_ARRAY, ref defines, "Define SYMBOL", "SYMBOL..." },
     { "main", 0, 0, OptionArg.STRING, ref entry_point, "Use SYMBOL as entry point", "SYMBOL..." },
+    { "nostdpkg", 0, 0, OptionArg.NONE, ref nostdpkg, "Do not include standard packages", null },
     { "disable-assert", 0, 0, OptionArg.NONE, ref disable_assert, "Disable assertions", null },
     { "enable-checking", 0, 0, OptionArg.NONE, ref enable_checking, "Enable additional run-time checks", null },
     { "enable-deprecated", 0, 0, OptionArg.NONE, ref deprecated, "Enable deprecated features", null },
     { "enable-experimental", 0, 0, OptionArg.NONE, ref experimental, "Enable experimental features", null },
     { "disable-warnings", 0, 0, OptionArg.NONE, ref disable_warnings, "Disable warnings", null },
+    { "fatal-warnings", 0, 0, OptionArg.NONE, ref fatal_warnings, "Treat warnings as fatal", null },
     { "enable-experimental-non-null", 0, 0, OptionArg.NONE, ref experimental_non_null, "Enable experimental enhancements for non-null types", null },
     { "disable-dbus-transformation", 0, 0, OptionArg.NONE, ref disable_dbus_transformation, "Disable transformation of D-Bus member names", null },
     { "profile", 0, 0, OptionArg.STRING, ref profile, "Use the given profile instead of the default", "PROFILE" },
@@ -122,56 +126,6 @@ class Valag.Application
     }
   }
 
-  private bool add_gir (CodeContext context, string gir) {
-    var gir_path = context.get_gir_path (gir, gir_directories);
-
-    if (gir_path == null) {
-      return false;
-    }
-
-    context.add_source_file (new SourceFile (context, gir_path, true));
-
-    return true;
-  }
-	
-  private bool add_package (CodeContext context, string pkg) {
-    if (context.has_package (pkg)) {
-      // ignore multiple occurences of the same package
-      return true;
-    }
-	
-    var package_path = context.get_package_path (pkg, vapi_directories);
-		
-    if (package_path == null) {
-      return false;
-    }
-		
-    context.add_package (pkg);
-		
-    context.add_source_file (new SourceFile (context, package_path, true));
-		
-    var deps_filename = Path.build_filename (Path.get_dirname (package_path), "%s.deps".printf (pkg));
-    if (FileUtils.test (deps_filename, FileTest.EXISTS)) {
-      try {
-        string deps_content;
-        size_t deps_len;
-        FileUtils.get_contents (deps_filename, out deps_content, out deps_len);
-        foreach (string dep in deps_content.split ("\n")) {
-          dep = dep.strip ();
-          if (dep != "") {
-            if (!add_package (context, dep)) {
-              Report.error (null, "%s, dependency of %s, not found in specified Vala API directories".printf (dep, pkg));
-            }
-          }
-        }
-      } catch (FileError e) {
-        Report.error (null, "Unable to read dependency file: %s".printf (e.message));
-      }
-    }
-		
-    return true;
-  }
-	
   private int run () {
     context = new GraphContext ();
     CodeContext.push (context);
@@ -204,6 +158,8 @@ class Valag.Application
     } else {
       context.directory = context.basedir;
     }
+    context.vapi_directories = vapi_directories;
+    context.gir_directories = gir_directories;
     context.debug = debug;
     if (profile == "posix") {
       context.profile = Profile.POSIX;
@@ -225,69 +181,57 @@ class Valag.Application
       }
     }
 
+    for (int i = 2; i <= 12; i += 2) {
+      context.add_define ("VALA_0_%d".printf (i));
+    }
+
     if (context.profile == Profile.POSIX) {
-      /* default package */
-      if (!add_package (context, "posix")) {
-        Report.error (null, "posix not found in specified Vala API directories");
+      if (!nostdpkg) {
+        /* default package */
+        context.add_external_package ("posix");
       }
     } else if (context.profile == Profile.GOBJECT) {
+      int glib_minor = 16;
 
-      /* default packages */
-      if (!add_package (context, "glib-2.0")) {
-        Report.error (null, "glib-2.0 not found in specified Vala API directories");
+      for (int i = 16; i <= glib_minor; i += 2) {
+        context.add_define ("GLIB_2_%d".printf (i));
       }
-      if (!add_package (context, "gobject-2.0")) {
-        Report.error (null, "gobject-2.0 not found in specified Vala API directories");
+
+      if (!nostdpkg) {
+        /* default packages */
+        context.add_external_package ("glib-2.0");
+        context.add_external_package ("gobject-2.0");
+      }
+    } else if (context.profile == Profile.DOVA) {
+      if (!nostdpkg) {
+        /* default package */
+        context.add_external_package ("dova-core-0.1");
       }
     }
 
     if (packages != null) {
       foreach (string package in packages) {
-        if (!add_package (context, package) && !add_gir (context, package)) {
-          Report.error (null, "%s not found in specified Vala API directories or GObject-Introspection GIR directories".printf (package));
+        context.add_external_package (package);
+        if (context.profile == Profile.GOBJECT && package == "dbus-glib-1") {
+          context.add_define ("DBUS_GLIB");
         }
       }
       packages = null;
     }
-		
-    if (context.report.get_errors () > 0) {
+
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 		
     foreach (string source in sources) {
-      if (FileUtils.test (source, FileTest.EXISTS)) {
-        var rpath = realpath (source);
-        if (source.has_suffix (".vala") || source.has_suffix (".gs")) {
-          var source_file = new SourceFile (context, rpath);
-
-          if (context.profile == Profile.POSIX) {
-            // import the Posix namespace by default (namespace of backend-specific standard library)
-            var ns_ref = new UsingDirective (new UnresolvedSymbol (null, "Posix", null));
-            source_file.add_using_directive (ns_ref);
-            context.root.add_using_directive (ns_ref);
-          } else if (context.profile == Profile.GOBJECT) {
-            // import the GLib namespace by default (namespace of backend-specific standard library)
-            var ns_ref = new UsingDirective (new UnresolvedSymbol (null, "GLib", null));
-            source_file.add_using_directive (ns_ref);
-            context.root.add_using_directive (ns_ref);
-          }
-
-          context.add_source_file (source_file);
-        } else if (source.has_suffix (".vapi") || source.has_suffix (".gir")) {
-          context.add_source_file (new SourceFile (context, rpath, true));
-        } else {
-          Report.error (null, "%s is not a supported source file type. Only .vala, .vapi and .gs files are supported.".printf (source));
-        }
-      } else {
-        Report.error (null, "%s not found".printf (source));
-      }
+      context.add_source_filename (source);
     }
     sources = null;
-		
-    if (context.report.get_errors () > 0) {
+
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
-		
+	
     var parser = new Parser ();
     parser.parse (context);
 
@@ -297,13 +241,7 @@ class Valag.Application
     var gir_parser = new GirParser ();
     gir_parser.parse (context);
 
-    if (gir_parser.get_package_names != null) {
-      foreach (var pkg in gir_parser.get_package_names ()) {
-        context.add_package (pkg);
-      }
-    }
-
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
@@ -311,7 +249,7 @@ class Valag.Application
     var graph_generator = new GraphGenerator ("valainitial");
     var graph = graph_generator.generate (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 
@@ -330,7 +268,7 @@ class Valag.Application
     graph_generator = new GraphGenerator ("valaresolved");
     graph = graph_generator.generate (context);
 
-    if (context.report.get_errors () > 0) {
+    if (context.report.get_errors () > 0 || (fatal_warnings && context.report.get_warnings () > 0)) {
       return quit ();
     }
 

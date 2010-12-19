@@ -6,7 +6,7 @@ DESTDIR = $(PREFIX)
 all: valag
 
 valag: $(SRCS)
-	$(VALAC) -g -o valag --thread --pkg vala-1.0 --pkg libgvc --pkg glib-2.0 --vapidir . $+
+	$(VALAC) -g -o valag --thread --pkg libvala-0.12 --pkg libgvc --pkg glib-2.0 --vapidir . $+
 
 install: valag
 	install -c ./valag -D $(DESTDIR)/bin/valag

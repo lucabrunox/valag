@@ -53,7 +53,7 @@ public class Valag.FlowGraphGenerator : CodeVisitor
     /* we're only interested in non-pkg source files */
     var source_files = context.get_source_files ();
     foreach (SourceFile file in source_files) {
-      if (!file.external_package) {
+      if (file.file_type == SourceFileType.SOURCE) {
         file.accept (this);
       }
     }
@@ -240,7 +240,7 @@ public class Valag.FlowGraphGenerator : CodeVisitor
                       {RecordEntry(){name="chain_up", value=m.chain_up.to_string()}});
   }
 
-  public override void visit_formal_parameter (FormalParameter p)
+  public override void visit_formal_parameter (Vala.Parameter p)
   {
     string? direction = null;
     if (p.direction == ParameterDirection.OUT)
