@@ -1,0 +1,11 @@
+Valag 1.1
+=========
+
+ * Add --format and --prefix options.
+ * Update to latest libvala-0.12.
+ * Bug fixes.
+
+Valag 1.0
+=========
+
+ * First release.

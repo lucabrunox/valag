@@ -413,7 +413,7 @@ class Valag.Application
     }
 		
     if (version) {
-      stdout.printf ("Valag 1.0\n");
+      stdout.printf ("Valag 1.1\n");
       return 0;
     }
 		
