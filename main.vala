@@ -71,7 +71,6 @@ class Valag.Application
   static bool deprecated;
   static bool experimental;
   static bool experimental_non_null;
-  static bool disable_dbus_transformation;
   static bool disable_warnings;
   [CCode (array_length = false, array_null_terminated = true)]
   static string[] defines;
@@ -106,7 +105,6 @@ class Valag.Application
     { "disable-warnings", 0, 0, OptionArg.NONE, ref disable_warnings, "Disable warnings", null },
     { "fatal-warnings", 0, 0, OptionArg.NONE, ref fatal_warnings, "Treat warnings as fatal", null },
     { "enable-experimental-non-null", 0, 0, OptionArg.NONE, ref experimental_non_null, "Enable experimental enhancements for non-null types", null },
-    { "disable-dbus-transformation", 0, 0, OptionArg.NONE, ref disable_dbus_transformation, "Disable transformation of D-Bus member names", null },
     { "profile", 0, 0, OptionArg.STRING, ref profile, "Use the given profile instead of the default", "PROFILE" },
     { "quiet", 'q', 0, OptionArg.NONE, ref quiet_mode, "Do not print messages to the console", null },
     { "verbose", 'v', 0, OptionArg.NONE, ref verbose_mode, "Print additional messages to the console", null },
@@ -143,7 +141,6 @@ class Valag.Application
     context.deprecated = deprecated;
     context.experimental = experimental;
     context.experimental_non_null = experimental || experimental_non_null;
-    context.dbus_transformation = !disable_dbus_transformation;
     context.report.enable_warnings = !disable_warnings;
     context.report.set_verbose_errors (!quiet_mode);
     context.verbose_mode = verbose_mode;
