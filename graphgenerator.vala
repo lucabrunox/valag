@@ -666,7 +666,8 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_member_access (MemberAccess expr)
   {
-    visit_graph_node (expr, @"MemberAccess $(expr.member_name)", {});
+    visit_graph_node (expr, @"MemberAccess $(expr.member_name)",
+					  {RecordEntry(){name="lvalue", value=expr.lvalue.to_string()}});
   }
 
   public override void visit_method_call (MethodCall expr)
