@@ -155,8 +155,8 @@ public class Valag.GraphGenerator : CodeVisitor
       {
         // higher rank
         var cur_rank = node["rank"];
-        if (cur_rank != null && rank > cur_rank.to_int())
-          ranking[cur_rank.to_int()].remove (codenode);
+        if (cur_rank != null && rank > int.parse (cur_rank))
+          ranking[int.parse (cur_rank)].remove (codenode);
         else
           {
             // add to rank
