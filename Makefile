@@ -1,7 +1,7 @@
 NULL =
 
 VALAC = valac
-VERSION = 1.1
+VERSION = 1.2
 SRCS = main.vala graphgenerator.vala flowgraphgenerator.vala
 PREFIX = /usr/local
 DESTDIR = $(PREFIX)

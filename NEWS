@@ -1,3 +1,9 @@
+Valag 1.2
+=========
+
+ * Update to latest libvala-0.14.
+ * Show lvalue property for MemberAccess
+
 Valag 1.1
 =========
 
