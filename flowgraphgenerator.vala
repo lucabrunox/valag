@@ -252,13 +252,11 @@ public class Valag.FlowGraphGenerator : CodeVisitor
                        RecordEntry() {name="direction", value=direction}});
   }
 
-  public override void visit_property (Property prop)
-  {
-    visit_graph_node (prop, @"Property $(prop.name)",
-                      {RecordEntry(){name="notify", value=prop.notify.to_string()},
-                       RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
-                       RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
-                       RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
+  public override void visit_property (Property prop) {
+	  visit_graph_node (prop, @"Property $(prop.name)", {
+			  RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
+			  RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
+			  RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
   }
 
   public override void visit_property_accessor (PropertyAccessor acc)

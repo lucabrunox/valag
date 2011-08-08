@@ -353,12 +353,11 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_property (Property prop)
   {
-    visit_graph_node (prop, @"Property $(prop.name)",
-                      {RecordEntry(){name="notify", value=prop.notify.to_string()},
-                       RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
-                       RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
-                       RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
-    visit_child (prop.field, prop, "field");
+	  visit_graph_node (prop, @"Property $(prop.name)", {
+			  RecordEntry(){name="is_abstract", value=prop.is_abstract.to_string()},
+			  RecordEntry(){name="is_virtual", value=prop.is_virtual.to_string()},
+			  RecordEntry(){name="overrides", value=prop.overrides.to_string()}});
+	  visit_child (prop.field, prop, "field");
   }
 
   public override void visit_property_accessor (PropertyAccessor acc)
@@ -369,12 +368,12 @@ public class Valag.GraphGenerator : CodeVisitor
 
   public override void visit_signal (Vala.Signal sig)
   {
-    var label = "Signal";
-    if (sig is DynamicSignal)
-      label = "DynamicSignal";
-    visit_graph_node (sig, @"$(label) $(sig.name)",
-                      {RecordEntry(){name="has_emitter", value=sig.has_emitter.to_string()},
-                       RecordEntry(){name="is_virtual", value=sig.is_virtual.to_string()}});
+	  var label = "Signal";
+	  if (sig is DynamicSignal) {
+		  label = "DynamicSignal";
+	  }
+	  visit_graph_node (sig, @"$(label) $(sig.name)", {
+			  RecordEntry(){name="is_virtual", value=sig.is_virtual.to_string()}});
   }
 
   public override void visit_constructor (Constructor c)
