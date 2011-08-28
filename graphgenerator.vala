@@ -500,12 +500,12 @@ public class Valag.GraphGenerator : CodeVisitor
     visit_graph_node (stmt, "DeclarationStatement", {});
   }
 
-  public override void visit_local_variable (LocalVariable local)
-  {
-    visit_graph_node (local, @"LocalVariable $(local.name)",
-                      {RecordEntry(){name="is_result", value=local.is_result.to_string()},
-                       RecordEntry(){name="floating", value=local.floating.to_string()},
-                       RecordEntry(){name="captured", value=local.captured.to_string()}});
+  public override void visit_local_variable (LocalVariable local) {
+	  visit_graph_node (local, @"LocalVariable $(local.name)",
+						{RecordEntry(){name="is_result", value=local.is_result.to_string()},
+						RecordEntry(){name="floating", value=local.floating.to_string()},
+						RecordEntry(){name="captured", value=local.captured.to_string()},
+						RecordEntry(){name="single_assign", value=local.single_assignment.to_string()}});
   }
 
   public override void visit_initializer_list (InitializerList list)
