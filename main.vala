@@ -162,10 +162,7 @@ class Valag.Application
     context.vapi_directories = vapi_directories;
     context.gir_directories = gir_directories;
     context.debug = debug;
-    if (profile == "posix") {
-      context.profile = Profile.POSIX;
-      context.add_define ("POSIX");
-    } else if (profile == "gobject-2.0" || profile == "gobject" || profile == null) {
+    if (profile == "gobject-2.0" || profile == "gobject" || profile == null) {
       // default profile
       context.profile = Profile.GOBJECT;
       context.add_define ("GOBJECT");
@@ -186,12 +183,7 @@ class Valag.Application
       context.add_define ("VALA_0_%d".printf (i));
     }
 
-    if (context.profile == Profile.POSIX) {
-      if (!nostdpkg) {
-        /* default package */
-        context.add_external_package ("posix");
-      }
-    } else if (context.profile == Profile.GOBJECT) {
+    if (context.profile == Profile.GOBJECT) {
       int glib_minor = 16;
 
       for (int i = 16; i <= glib_minor; i += 2) {
@@ -202,11 +194,6 @@ class Valag.Application
         /* default packages */
         context.add_external_package ("glib-2.0");
         context.add_external_package ("gobject-2.0");
-      }
-    } else if (context.profile == Profile.DOVA) {
-      if (!nostdpkg) {
-        /* default package */
-        context.add_external_package ("dova-core-0.1");
       }
     }
 
